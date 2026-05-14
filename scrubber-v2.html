@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mailing List Scrubber</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f3; color: #1a1a1a; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+  .card { background: #fff; border-radius: 16px; border: 1px solid #e5e5e3; padding: 2rem; width: 100%; max-width: 700px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; background: #e8f0fe; color: #1a56db; border: 1px solid #a4c2f7; border-radius: 20px; padding: 2px 10px; margin-bottom: 10px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #666; margin-bottom: 1.5rem; line-height: 1.5; }
+  .section-label { font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; margin-top: 1.25rem; }
+  .upload-card { border: 1.5px dashed #d0d0ce; border-radius: 12px; padding: 1rem 1.25rem; cursor: pointer; transition: border-color 0.15s, background 0.15s; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .upload-card:hover { border-color: #185FA5; background: #f0f6ff; }
+  .upload-card.ready { border-style: solid; border-color: #1D9E75; background: #f0faf6; }
+  .upload-icon { font-size: 22px; flex-shrink: 0; }
+  .upload-text { flex: 1; min-width: 0; }
+  .upload-title { font-size: 13px; font-weight: 600; color: #333; }
+  .upload-card.ready .upload-title { color: #085041; }
+  .upload-sub { font-size: 12px; color: #aaa; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .upload-card.ready .upload-sub { color: #1D9E75; }
+  .master-card { border-color: #185FA5; border-style: solid; background: #f8faff; }
+  .master-card .upload-title { color: #185FA5; }
+  .master-card.ready { border-color: #1D9E75; background: #f0faf6; }
+  .master-card.ready .upload-title { color: #085041; }
+  input[type=file] { display: none; }
+  .tab-selector { margin-top: 8px; display: none; }
+  .tab-selector-label { font-size: 12px; color: #666; margin-bottom: 5px; }
+  .tab-selector select { width: 100%; padding: 9px 12px; font-size: 13px; font-family: inherit; border: 1.5px solid #185FA5; border-radius: 10px; background: #f0f6ff; color: #185FA5; font-weight: 500; cursor: pointer; outline: none; }
+  .tab-selector select:focus { border-color: #1D9E75; }
+  .run-btn { width: 100%; margin-top: 1.5rem; padding: 13px; font-size: 15px; font-weight: 600; border-radius: 10px; border: none; background: #185FA5; color: #fff; cursor: pointer; transition: opacity 0.15s; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .run-btn:not(:disabled):hover { opacity: 0.88; }
+  .status-area { margin-top: 1.25rem; }
+  .status-msg { font-size: 14px; color: #666; margin-bottom: 8px; }
+  .progress-bar { height: 5px; background: #ebebeb; border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #185FA5; border-radius: 3px; transition: width 0.3s; }
+  .results-card { background: #fff; border: 1px solid #e5e5e3; border-radius: 12px; padding: 1.5rem; margin-top: 1.25rem; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+  .stat { background: #f5f5f3; border-radius: 10px; padding: 0.85rem; text-align: center; }
+  .stat-n { font-size: 22px; font-weight: 600; color: #185FA5; }
+  .stat-n.removed { color: #c0392b; }
+  .stat-label { font-size: 11px; color: #888; margin-top: 3px; line-height: 1.3; }
+  .dl-btn { width: 100%; padding: 11px; font-size: 14px; font-weight: 600; border-radius: 10px; border: none; background: #185FA5; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; transition: opacity 0.15s; }
+  .dl-btn:hover { opacity: 0.88; }
+  .dl-btn.red { background: #c0392b; }
+  .copy-btn { width: 100%; padding: 11px; font-size: 14px; font-weight: 600; border-radius: 10px; border: 1.5px solid #d0d0ce; background: #fff; color: #333; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
+  .copy-btn:hover { background: #f5f5f3; }
+  .error-msg { font-size: 13px; color: #c0392b; background: #fdf0ee; border-radius: 8px; padding: 10px 14px; margin-top: 1rem; border: 1px solid #f5c6c0; }
+  .info-box { font-size: 12px; color: #555; background: #f0f6ff; border: 1px solid #c5d9f7; border-radius: 8px; padding: 10px 14px; margin-top: 1rem; line-height: 1.6; }
+  .reset-link { font-size: 13px; color: #999; text-align: center; margin-top: 14px; cursor: pointer; text-decoration: underline; }
+  .reset-link:hover { color: #555; }
+  .preview-wrap { margin-top: 1.25rem; border: 1px solid #e5e5e3; border-radius: 10px; overflow: hidden; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f5f5f3; color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 10px; text-align: left; border-bottom: 1px solid #e5e5e3; white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f0f0ee; color: #222; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafaf8; }
+  .more-note { font-size: 12px; color: #aaa; margin-top: 8px; }
+  .divider { border: none; border-top: 1px solid #f0f0ee; margin: 1.25rem 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="badge">Mailing List Scrubber</div>
+  <h1>Mailing list scrubber</h1>
+  <p class="subtitle">Upload your master mailing list and up to three scrub lists. Any contact matching an email, phone, or address from any scrub list will be removed. Rows do not need to align across files.</p>
+
+  <div class="section-label">① Master mailing list</div>
+  <div class="upload-card master-card" id="master-card" onclick="document.getElementById('master-input').click()">
+    <div class="upload-icon" id="master-icon">📋</div>
+    <div class="upload-text">
+      <div class="upload-title" id="master-title">Click to upload master mailing list</div>
+      <div class="upload-sub" id="master-sub">The list you want to clean — .xlsx</div>
+    </div>
+  </div>
+  <input type="file" id="master-input" accept=".xlsx">
+
+  <div class="section-label">② Scrub lists — upload 1, 2, or all 3</div>
+
+  <div class="upload-card" id="owners-card" onclick="document.getElementById('owners-input').click()">
+    <div class="upload-icon" id="owners-icon">🏠</div>
+    <div class="upload-text">
+      <div class="upload-title" id="owners-title">Current owners list</div>
+      <div class="upload-sub" id="owners-sub">Output from the owner comparison tool — .xlsx</div>
+    </div>
+  </div>
+  <input type="file" id="owners-input" accept=".xlsx">
+
+  <div class="upload-card" id="returned-card" onclick="document.getElementById('returned-input').click()">
+    <div class="upload-icon" id="returned-icon">📬</div>
+    <div class="upload-text">
+      <div class="upload-title" id="returned-title">Returned mailers list</div>
+      <div class="upload-sub" id="returned-sub">Uses "Returned Mail" tab — Street Address and Full Address columns only — .xlsx</div>
+    </div>
+  </div>
+  <input type="file" id="returned-input" accept=".xlsx">
+
+  <div class="upload-card" id="exclusions-card" onclick="document.getElementById('exclusions-input').click()">
+    <div class="upload-icon" id="exclusions-icon">🚫</div>
+    <div class="upload-text">
+      <div class="upload-title" id="exclusions-title">Exclusions list</div>
+      <div class="upload-sub" id="exclusions-sub">Select a shop tab after uploading — .xlsx</div>
+    </div>
+  </div>
+  <input type="file" id="exclusions-input" accept=".xlsx">
+  <div class="tab-selector" id="tab-selector">
+    <div class="tab-selector-label">Select which shop tab to use from the exclusions file:</div>
+    <select id="tab-select" onchange="onTabSelected()">
+      <option value="">— Choose a shop tab —</option>
+    </select>
+  </div>
+
+  <button class="run-btn" id="run-btn" disabled onclick="runScrub()">▶ Run scrub</button>
+
+  <div class="status-area" id="status-area" style="display:none;">
+    <div class="status-msg" id="status-msg">Processing...</div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  </div>
+
+  <div id="error-area"></div>
+  <div id="results-area"></div>
+</div>
+
+<script>
+let files = { master: null, owners: null, returned: null, exclusions: null };
+let cleanedRows = [], removedRows = [], masterHeaders = [];
+let exclusionsWorkbook = null;
+
+// ── File readers ──────────────────────────────────────────────────────────────
+
+function readXlsx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }));
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function readReturnedMailXlsx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const tabName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'returned mail');
+        if (!tabName) {
+          reject(new Error('Could not find a tab named "Returned Mail". Please check the file.'));
+          return;
+        }
+        resolve(XLSX.utils.sheet_to_json(wb.Sheets[tabName], { defval: '' }));
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function readWorkbook(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try { resolve(XLSX.read(e.target.result, { type: 'array' })); }
+      catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── Upload handlers ───────────────────────────────────────────────────────────
+
+function setupUpload(inputId, cardId, iconId, titleId, subId, key, label, readerFn) {
+  document.getElementById(inputId).addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      files[key] = await readerFn(f);
+      document.getElementById(cardId).classList.add('ready');
+      document.getElementById(iconId).textContent = '✅';
+      document.getElementById(titleId).textContent = label;
+      document.getElementById(subId).textContent = f.name;
+      checkReady();
+    } catch(err) {
+      showError(err.message || 'Could not read ' + f.name + '. Make sure it is a .xlsx file.');
+    }
+  });
+}
+
+setupUpload('master-input',   'master-card',   'master-icon',   'master-title',   'master-sub',   'master',   'Master mailing list',   readXlsx);
+setupUpload('owners-input',   'owners-card',   'owners-icon',   'owners-title',   'owners-sub',   'owners',   'Current owners list',    readXlsx);
+setupUpload('returned-input', 'returned-card', 'returned-icon', 'returned-title', 'returned-sub', 'returned', 'Returned mailers list',  readReturnedMailXlsx);
+
+// Exclusions — workbook reader with tab picker
+document.getElementById('exclusions-input').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    exclusionsWorkbook = await readWorkbook(f);
+    const tabs = exclusionsWorkbook.SheetNames;
+    const sel = document.getElementById('tab-select');
+    sel.innerHTML = '<option value="">— Choose a shop tab —</option>';
+    tabs.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      sel.appendChild(opt);
+    });
+    document.getElementById('tab-selector').style.display = 'block';
+    document.getElementById('exclusions-card').classList.add('ready');
+    document.getElementById('exclusions-icon').textContent = '✅';
+    document.getElementById('exclusions-title').textContent = 'Exclusions list';
+    document.getElementById('exclusions-sub').textContent = f.name + ' — select a shop tab below';
+    files.exclusions = null;
+    checkReady();
+  } catch(err) {
+    showError('Could not read exclusions file. Make sure it is a .xlsx file.');
+  }
+});
+
+function onTabSelected() {
+  const sel = document.getElementById('tab-select');
+  const tabName = sel.value;
+  if (tabName && exclusionsWorkbook) {
+    files.exclusions = XLSX.utils.sheet_to_json(exclusionsWorkbook.Sheets[tabName], { defval: '' });
+  } else {
+    files.exclusions = null;
+  }
+  checkReady();
+}
+
+function checkReady() {
+  const exclusionsUploaded = exclusionsWorkbook !== null;
+  const exclusionsTabChosen = files.exclusions !== null;
+  const exclusionsOk = !exclusionsUploaded || exclusionsTabChosen;
+  const hasScrub = files.owners || files.returned || exclusionsTabChosen;
+  document.getElementById('run-btn').disabled = !(files.master && hasScrub && exclusionsOk);
+}
+
+// ── Value normalisation — exact matches only ──────────────────────────────────
+
+function normalizeEmail(v) {
+  const s = String(v || '').toLowerCase().trim();
+  return s.includes('@') ? s : '';
+}
+function normalizePhone(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  const s = d.startsWith('1') && d.length === 11 ? d.slice(1) : d;
+  return s.length === 10 ? s : '';
+}
+function normalizeAddress(v) {
+  return String(v || '').toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// ── Column detection — named columns only ─────────────────────────────────────
+
+const EMAIL_HINTS   = ['email','e-mail','mail','login','address1','emailaddress'];
+const PHONE_HINTS   = ['phone','mobile','cell','tel','home','work','fax'];
+const ADDRESS_HINTS = ['address','addr','street','streetaddress','road','location','mailing'];
+const ADDRESS_ANTI  = ['email','city','state','zip','postal','country','code'];
+
+function scoreColumn(col, hints, anti) {
+  const c = col.toLowerCase().replace(/[\s_#\-]/g, '');
+  let score = 0;
+  for (const h of hints) if (c.includes(h)) score += 2;
+  if (anti) for (const a of anti) if (c.includes(a)) score -= 3;
+  return score;
+}
+
+function detectColumns(rows) {
+  if (!rows || rows.length === 0) return { emails: [], phones: [], addresses: [] };
+  // Only use columns with real named headers — skip __EMPTY__ and blank
+  const cols = Object.keys(rows[0]).filter(c =>
+    String(c).trim().length > 0 && !String(c).startsWith('__EMPTY') && c !== '__rowNum__'
+  );
+  const emails    = cols.filter(c => scoreColumn(c, EMAIL_HINTS, null) > 0);
+  const phones    = cols.filter(c => scoreColumn(c, PHONE_HINTS, ['email','address','street']) > 0);
+  const addresses = cols.filter(c => scoreColumn(c, ADDRESS_HINTS, ADDRESS_ANTI) > 0);
+  return { emails, phones, addresses };
+}
+
+// ── Build scrub sets ──────────────────────────────────────────────────────────
+
+// Generic builder — uses column detection (for owners and exclusions)
+function buildScrubSets(rows, sourceLabel) {
+  const emailMap = new Map(), phoneMap = new Map(), addrMap = new Map();
+  if (!rows || rows.length === 0) return { emailMap, phoneMap, addrMap };
+  const { emails, phones, addresses } = detectColumns(rows);
+  for (const row of rows) {
+    for (const col of emails) {
+      const v = normalizeEmail(row[col]);
+      if (v && !emailMap.has(v)) emailMap.set(v, sourceLabel);
+    }
+    for (const col of phones) {
+      const v = normalizePhone(row[col]);
+      if (v && !phoneMap.has(v)) phoneMap.set(v, sourceLabel);
+    }
+    for (const col of addresses) {
+      const v = normalizeAddress(row[col]);
+      if (v && v.length >= 8 && !addrMap.has(v)) addrMap.set(v, sourceLabel);
+    }
+  }
+  return { emailMap, phoneMap, addrMap };
+}
+
+// Returned mailers — builds address from Street Address + City + State + Zip
+// Full Address column contains Excel formulas (not text), so we ignore it
+// and construct the full address ourselves from the component columns
+function buildReturnedMailSets(rows) {
+  const emailMap = new Map(), phoneMap = new Map(), addrMap = new Map();
+  if (!rows || rows.length === 0) return { emailMap, phoneMap, addrMap };
+
+  for (const row of rows) {
+    const street  = String(row['Street Address'] || '').trim();
+    const city    = String(row['City']           || '').trim();
+    const state   = String(row['State']          || '').trim();
+    const zip     = String(row['Zip Code']       || '').trim();
+    const fullRaw = String(row['Full Address']   || '').trim();
+
+    const candidates = [];
+
+    // Use Full Address only if it's real text (not a formula)
+    if (fullRaw && !fullRaw.startsWith('=')) {
+      candidates.push(fullRaw);
+    }
+
+    // Always add street-only for matching against master lists that only have street
+    if (street) {
+      candidates.push(street);
+      // Also add combined full address built from components
+      const combined = [street, city, state, zip].filter(Boolean).join(' ');
+      if (combined !== street) candidates.push(combined);
+    }
+
+    for (const val of candidates) {
+      const v = normalizeAddress(val);
+      if (v && v.length >= 8 && !addrMap.has(v)) {
+        addrMap.set(v, 'Returned mailers list');
+      }
+    }
+  }
+  return { emailMap, phoneMap, addrMap };
+}
+
+function mergeSets(a, b) {
+  return {
+    emailMap: new Map([...a.emailMap, ...b.emailMap]),
+    phoneMap: new Map([...a.phoneMap, ...b.phoneMap]),
+    addrMap:  new Map([...a.addrMap,  ...b.addrMap]),
+  };
+}
+
+// ── Main scrub ────────────────────────────────────────────────────────────────
+
+function setProgress(pct, msg) {
+  document.getElementById('status-area').style.display = 'block';
+  document.getElementById('status-msg').textContent = msg;
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+function showError(msg) {
+  document.getElementById('error-area').innerHTML = '<div class="error-msg">⚠️ ' + msg + '</div>';
+}
+
+async function runScrub() {
+  document.getElementById('error-area').innerHTML = '';
+  document.getElementById('results-area').innerHTML = '';
+  document.getElementById('run-btn').disabled = true;
+
+  setProgress(10, 'Building scrub lists...');
+  await new Promise(r => setTimeout(r, 50));
+
+  let combined = { emailMap: new Map(), phoneMap: new Map(), addrMap: new Map() };
+  if (files.owners)     combined = mergeSets(combined, buildScrubSets(files.owners, 'Current owners list'));
+  if (files.returned)   combined = mergeSets(combined, buildReturnedMailSets(files.returned));
+  if (files.exclusions) combined = mergeSets(combined, buildScrubSets(files.exclusions, 'Exclusions list'));
+
+  setProgress(35, 'Detecting columns in master mailing list...');
+  await new Promise(r => setTimeout(r, 50));
+
+  const masterDetected = detectColumns(files.master);
+  masterHeaders = Object.keys(files.master[0] || {});
+
+  setProgress(55, 'Scrubbing master list...');
+  await new Promise(r => setTimeout(r, 50));
+
+  const total = files.master.length;
+  cleanedRows = []; removedRows = [];
+  let removedCount = 0;
+
+  for (const row of files.master) {
+    let shouldRemove = false, removeReason = '', removeValue = '';
+
+    // Check emails — exact match
+    for (const col of masterDetected.emails) {
+      const v = normalizeEmail(row[col]);
+      if (v && combined.emailMap.has(v)) {
+        shouldRemove = true;
+        removeReason = 'Email match (col: ' + col + ') — found in: ' + combined.emailMap.get(v);
+        removeValue = String(row[col]);
+        break;
+      }
+    }
+
+    // Check phones — exact 10-digit match
+    if (!shouldRemove) {
+      for (const col of masterDetected.phones) {
+        const v = normalizePhone(row[col]);
+        if (v && combined.phoneMap.has(v)) {
+          shouldRemove = true;
+          removeReason = 'Phone match (col: ' + col + ') — found in: ' + combined.phoneMap.get(v);
+          removeValue = String(row[col]);
+          break;
+        }
+      }
+    }
+
+    // Check addresses — exact match after normalisation
+    if (!shouldRemove) {
+      for (const col of masterDetected.addresses) {
+        const v = normalizeAddress(row[col]);
+        if (v && v.length >= 8 && combined.addrMap.has(v)) {
+          shouldRemove = true;
+          removeReason = 'Address match (col: ' + col + ') — found in: ' + combined.addrMap.get(v);
+          removeValue = String(row[col]);
+          break;
+        }
+      }
+    }
+
+    if (shouldRemove) {
+      removedCount++;
+      removedRows.push({ ...row, '__Removed Because__': removeReason, '__Matched Value__': removeValue });
+    } else {
+      cleanedRows.push(row);
+    }
+  }
+
+  setProgress(100, 'Done!');
+  await new Promise(r => setTimeout(r, 200));
+  document.getElementById('status-area').style.display = 'none';
+
+  const previewCols = masterHeaders.slice(0, 5);
+  const headerHtml = previewCols.map(c => '<th>' + c + '</th>').join('');
+  const rowsHtml = cleanedRows.slice(0, 8).map(r =>
+    '<tr>' + previewCols.map(c => '<td title="' + String(r[c]||'') + '">' + String(r[c]||'') + '</td>').join('') + '</tr>'
+  ).join('');
+
+  const scrubSources = [files.owners && 'current owners', files.returned && 'returned mailers', files.exclusions && 'exclusions'].filter(Boolean).join(', ');
+
+  document.getElementById('results-area').innerHTML =
+    '<div class="results-card">' +
+      '<div class="stat-grid">' +
+        '<div class="stat"><div class="stat-n">' + total.toLocaleString() + '</div><div class="stat-label">Original rows</div></div>' +
+        '<div class="stat"><div class="stat-n removed">' + removedCount.toLocaleString() + '</div><div class="stat-label">Rows removed</div></div>' +
+        '<div class="stat"><div class="stat-n">' + cleanedRows.length.toLocaleString() + '</div><div class="stat-label">Rows remaining</div></div>' +
+        '<div class="stat"><div class="stat-n">' + Math.round(removedCount/total*100) + '%</div><div class="stat-label">Scrubbed</div></div>' +
+      '</div>' +
+      '<div class="info-box">Matched against: <strong>' + scrubSources + '</strong><br>' +
+        'Master columns used — Emails: <strong>' + (masterDetected.emails.join(', ')||'none') + '</strong> · ' +
+        'Phones: <strong>' + (masterDetected.phones.join(', ')||'none') + '</strong> · ' +
+        'Addresses: <strong>' + (masterDetected.addresses.join(', ')||'none') + '</strong></div>' +
+      '<hr class="divider">' +
+      '<button class="dl-btn" onclick="downloadXlsx()">⬇ Download cleaned mailing list (.xlsx)</button>' +
+      '<button class="dl-btn red" onclick="downloadRemovedXlsx()">⬇ Download removed rows with reasons (.xlsx)</button>' +
+      '<button class="copy-btn" onclick="copyTsv()">⎘ Copy all rows (paste into Excel)</button>' +
+      '<div class="preview-wrap"><table><thead><tr>' + headerHtml + (masterHeaders.length > 5 ? '<th>…</th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+      (cleanedRows.length > 8 ? '<p class="more-note">Showing 8 of ' + cleanedRows.length.toLocaleString() + ' rows. Download to see all.</p>' : '') +
+    '</div>' +
+    '<div class="reset-link" onclick="resetTool()">Start over</div>';
+
+  document.getElementById('run-btn').disabled = false;
+}
+
+// ── Downloads ─────────────────────────────────────────────────────────────────
+
+function downloadXlsx() {
+  const ws = XLSX.utils.json_to_sheet(cleanedRows, { header: masterHeaders });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cleaned List');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const today = new Date();
+  const fn = 'Cleaned_Mailing_List_' + (today.getMonth()+1) + '-' + today.getDate() + '-' + today.getFullYear() + '.xlsx';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fn;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 1000);
+}
+
+function downloadRemovedXlsx() {
+  if (!removedRows.length) return;
+  const headers = [...masterHeaders, '__Removed Because__', '__Matched Value__'];
+  const ws = XLSX.utils.json_to_sheet(removedRows, { header: headers });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Removed Rows');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const today = new Date();
+  const fn = 'Removed_Rows_' + (today.getMonth()+1) + '-' + today.getDate() + '-' + today.getFullYear() + '.xlsx';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fn;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 1000);
+}
+
+function copyTsv() {
+  const header = masterHeaders.join('\t');
+  const rows = cleanedRows.map(r => masterHeaders.map(h => String(r[h]||'')).join('\t')).join('\n');
+  navigator.clipboard.writeText(header + '\n' + rows).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  }).catch(() => showError('Copy failed — try the Download button instead.'));
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+
+function resetTool() {
+  files = { master: null, owners: null, returned: null, exclusions: null };
+  cleanedRows = []; removedRows = []; masterHeaders = [];
+  exclusionsWorkbook = null;
+
+  const configs = [
+    ['master-card',   'master-icon',   'master-title',   'master-sub',   'master-input',   '📋', 'Click to upload master mailing list', 'The list you want to clean — .xlsx'],
+    ['owners-card',   'owners-icon',   'owners-title',   'owners-sub',   'owners-input',   '🏠', 'Current owners list',                  'Output from the owner comparison tool — .xlsx'],
+    ['returned-card', 'returned-icon', 'returned-title', 'returned-sub', 'returned-input', '📬', 'Returned mailers list',                'Uses "Returned Mail" tab — Street Address and Full Address columns only — .xlsx'],
+    ['exclusions-card','exclusions-icon','exclusions-title','exclusions-sub','exclusions-input','🚫','Exclusions list','Select a shop tab after uploading — .xlsx'],
+  ];
+  configs.forEach(([card, icon, title, sub, input, emoji, t, s]) => {
+    document.getElementById(card).classList.remove('ready');
+    document.getElementById(icon).textContent = emoji;
+    document.getElementById(title).textContent = t;
+    document.getElementById(sub).textContent = s;
+    document.getElementById(input).value = '';
+  });
+
+  document.getElementById('tab-selector').style.display = 'none';
+  document.getElementById('tab-select').innerHTML = '<option value="">— Choose a shop tab —</option>';
+  document.getElementById('results-area').innerHTML = '';
+  document.getElementById('error-area').innerHTML = '';
+  document.getElementById('status-area').style.display = 'none';
+  document.getElementById('run-btn').disabled = true;
+}
+</script>
+</body>
+</html>
